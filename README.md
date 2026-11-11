@@ -41,10 +41,13 @@ flowchart LR
 - 同一台电脑上的 DeepSeek Harness 桌面端或本地 web profile，已经能够正常使用。
 - CodeArts 桌面端，已经登录并具有可用模型额度。
 - Python 3.11 或更高版本，用于运行 MCP 服务和安装脚本。
+- Git 用于克隆与更新源码，也可从 Releases 下载源码 ZIP 后解压使用。
 - DSH 宿主支持 `node:sqlite`，本机验证使用 DSH `0.2.2-rc.1` 的 Node 24 运行时。
 - 运行 JavaScript 回归检查时使用独立 Node.js 24。
 
 本机客户端接入在 Windows 上验证。其他操作系统的配置路径与桌面行为需要分别确认。DSH 仍处于开发者预览期，升级后的接口兼容性需要重新核对。[DSH 官方说明](https://github.com/deepseek-ai/deepseek-harness)
+
+GitHub 上的 Windows 与 Linux 队列、协议和安装器自动检查结果可在 Checks 工作流查看。[自动检查](https://github.com/hsajdh/dsh-codearts-task-queue/actions/workflows/checks.yml)
 
 ## Windows 快速接入
 

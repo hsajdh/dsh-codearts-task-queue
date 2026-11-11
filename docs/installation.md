@@ -10,6 +10,8 @@
 
 选择一个长期保留的目录。示例使用 `C:/projects`，也可使用包含中文或空格的路径。
 
+克隆命令需要已安装 Git。也可在 Releases 中下载源码 ZIP，解压后进入含有 `codearts_queue.py` 和 `requirements.txt` 的根目录，从创建 `.venv` 的命令继续。[版本下载](https://github.com/hsajdh/dsh-codearts-task-queue/releases)
+
 ```powershell
 Set-Location C:/projects
 git clone https://github.com/hsajdh/dsh-codearts-task-queue.git

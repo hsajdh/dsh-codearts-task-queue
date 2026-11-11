@@ -19,6 +19,8 @@ Windows 本机运行了队列、配置安装器、真实 stdio MCP 与 JavaScrip
 
 Python 测试当前包括 17 项，JavaScript 测试当前包括 7 项。安装器、协议、文档链接和样例均使用便携公开源码测试。公开源码还在本机 DSH 宿主中验证了工具事件、通知和原生会话恢复，验证过程截获后续模型消息。
 
+2026-11-11，GitHub 的 Windows 与 Linux 工作节点均通过固定依赖安装及上述自动化测试。它们验证队列、配置、stdio 协议与通知逻辑，桌面客户端集成的操作系统范围仍按上表记录。[GitHub Checks](https://github.com/hsajdh/dsh-codearts-task-queue/actions/workflows/checks.yml)
+
 ## 待真实环境验证
 
 - 用户在 CodeArts 桌面手动领取正式任务。
