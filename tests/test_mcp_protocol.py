@@ -56,8 +56,10 @@ class ProtocolTests(unittest.TestCase):
                     await call(execute, 'report_progress', {**owner, 'summary': 'Simulating file delivery'})
                     artifact = project / 'result.txt'
                     artifact.write_text('PROTOCOL_FIXTURE_OK\n', encoding='utf-8')
-                    await call(execute, 'report_delivery', {**owner, 'summary': 'Local test fixture created',
-                        'artifacts': ['result.txt'], 'tests': ['Fixture writer completed']})
+                    delivery = {**owner, 'summary': 'Local test fixture created',
+                        'artifacts': ['result.txt'], 'tests': ['Fixture writer completed']}
+                    await call(execute, 'report_delivery', delivery)
+                    self.assertTrue((await call(execute, 'report_delivery', delivery))['reused'])
                     state = await call(dispatch, 'queue_status', {'task_id': task['id']})
                     self.assertEqual(state['state'], 'awaiting_review')
                     self.assertNotIn('lease_token', state)
@@ -65,6 +67,14 @@ class ProtocolTests(unittest.TestCase):
                     accepted = await call(dispatch, 'review_delivery', {'task_id': task['id'],
                         'accepted': True, 'evidence': 'Independently read the fixture and verified the exact marker'})
                     self.assertEqual(accepted['state'], 'accepted')
+                    second = await call(dispatch, 'submit_task', {'project_dir': str(project),
+                        'request_key': 'next-protocol-task', 'title': 'Next fixture',
+                        'instructions': 'Another bounded test fixture', 'acceptance': ['Explicit new pickup']})
+                    repeated = await call(execute, 'claim_next', {'claim_key': 'one-manual-pickup'})
+                    self.assertIsNone(repeated['task'])
+                    self.assertEqual(repeated['previous_task_id'], task['id'])
+                    self.assertEqual((await call(dispatch, 'queue_status', {'task_id': second['id']}))['state'], 'queued')
+                    await call(dispatch, 'cancel_task', {'task_id': second['id']})
 
             asyncio.run(asyncio.wait_for(scenario(), timeout=40))
             self.assertTrue(directory.is_relative_to(parent.resolve()))

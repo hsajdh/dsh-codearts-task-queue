@@ -82,8 +82,20 @@ export class ReviewRelay {
           agent = resolved.agent;
         }
         if (this.closed) return;
+        const currentQueue = new DatabaseSync(this.queuePath, { readOnly: true });
+        let current;
+        try {
+          currentQueue.exec('PRAGMA busy_timeout=5000');
+          current = currentQueue.prepare('SELECT state,updated_at FROM tasks WHERE id=?').get(delivery.id);
+        } finally {
+          currentQueue.close();
+        }
+        if (current?.state !== 'awaiting_review' || current.updated_at !== delivery.updated_at) {
+          this.state.prepare('UPDATE owners SET notification_until=0 WHERE task_id=?').run(delivery.id);
+          continue;
+        }
         const revision = Math.round(delivery.updated_at * 1000);
-        await agent.followup({ id: `codearts-delivery-${delivery.id}-${revision}`,
+        await agent.followup({ role: 'user', id: `codearts-delivery-${delivery.id}-${revision}`,
           source: { kind: 'codearts-task-delivery', taskId: delivery.id },
           content: [{ type: 'text', text:
             `CodeArts 桌面已回报任务 ${delivery.id} 的交付。` +

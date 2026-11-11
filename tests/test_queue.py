@@ -97,6 +97,66 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(self.delivery(task, claimed)['state'], 'canceled')
         self.assertEqual(self.submit()['state'], 'canceled')
 
+    def test_delivery_retry_returns_existing_delivery(self):
+        task = self.submit()
+        claimed = queue.claim_next('claim-1')
+        first = self.delivery(task, claimed)
+        with queue.database() as connection:
+            timestamp = connection.execute('SELECT updated_at FROM tasks WHERE id=?', (task['id'],)).fetchone()[0]
+        repeated = self.delivery(task, claimed)
+        self.assertEqual(repeated['state'], first['state'])
+        self.assertTrue(repeated['reused'])
+        with queue.database() as connection:
+            self.assertEqual(connection.execute('SELECT updated_at FROM tasks WHERE id=?', (task['id'],)).fetchone()[0], timestamp)
+        with self.assertRaises(ValueError):
+            queue.report_delivery(task['id'], claimed['task']['lease_token'], 'Changed delivery', ['result.txt'], [])
+        with self.assertRaises(ValueError):
+            queue.report_progress(task['id'], claimed['task']['lease_token'], 'Late progress')
+        with self.assertRaises(ValueError):
+            queue.report_delivery(task['id'], 'wrong-token', 'Created the file', ['result.txt'], ['Marker file written'])
+
+    def test_finished_pickup_key_cannot_claim_another_task(self):
+        task = self.submit()
+        claimed = queue.claim_next('one-pickup')
+        self.delivery(task, claimed)
+        second = self.submit('second-task')
+        repeated = queue.claim_next('one-pickup')
+        self.assertIsNone(repeated['task'])
+        self.assertEqual(repeated['previous_task_id'], task['id'])
+        self.assertEqual(queue.queue_status(second['id'])['state'], 'queued')
+        queue.review_delivery(task['id'], True, 'Verified marker')
+        self.assertIsNone(queue.claim_next('one-pickup')['task'])
+        self.assertEqual(queue.claim_next('new-pickup')['task']['id'], second['id'])
+
+    def test_old_pickup_key_cannot_obtain_a_new_executor_lease(self):
+        task = self.submit()
+        first = queue.claim_next('original-pickup')
+        self.delivery(task, first)
+        queue.review_delivery(task['id'], False, 'Please revise the marker')
+        second = queue.claim_next('revision-pickup')
+        repeated = queue.claim_next('original-pickup')
+        self.assertIsNone(repeated['task'])
+        self.assertNotIn(second['task']['lease_token'], str(repeated))
+
+    def test_legacy_queue_without_claim_history_preserves_current_owner(self):
+        task = self.submit()
+        first = queue.claim_next('legacy-pickup')
+        with queue.database() as connection:
+            connection.execute('DROP TABLE claims')
+        repeated = queue.claim_next('legacy-pickup')
+        self.assertEqual(first['task']['lease_token'], repeated['task']['lease_token'])
+        self.delivery(task, first)
+        self.assertIsNone(queue.claim_next('legacy-pickup')['task'])
+
+    def test_delivery_receipt_retry_survives_file_removal(self):
+        task = self.submit()
+        first = queue.claim_next('pickup')
+        self.delivery(task, first)
+        (self.project / 'result.txt').unlink()
+        repeated = queue.report_delivery(task['id'], first['task']['lease_token'], 'Created the file',
+                                         ['result.txt'], ['Marker file written'])
+        self.assertTrue(repeated['reused'])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

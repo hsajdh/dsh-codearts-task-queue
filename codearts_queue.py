@@ -32,6 +32,9 @@ def database():
         created_at REAL NOT NULL, updated_at REAL NOT NULL,
         UNIQUE(project, request_key)
     )''')
+    connection.execute('''CREATE TABLE IF NOT EXISTS claims (
+        claim_key TEXT PRIMARY KEY, task_id TEXT NOT NULL REFERENCES tasks(id)
+    )''')
     connection.commit()
     connection.execute('BEGIN IMMEDIATE')
     try:
@@ -89,7 +92,8 @@ def submit_task(project_dir: str, request_key: str, title: str, instructions: st
                                       (project, request_key)).fetchone()
         if previous:
             if (previous['title'], previous['instructions'], previous['acceptance']) != (title, instructions, criteria):
-                raise ValueError('This request_key is already used for a different task')
+                raise ValueError('This request_key already belongs to a different task definition. '
+                                 'Submit corrected instructions or a replacement task with a new request_key.')
             return view(previous)
         task_id = 'ca-' + uuid.uuid4().hex[:16]
         now = time.time()
@@ -121,24 +125,40 @@ def claim_next(claim_key: str, lease_seconds: int = 3600) -> dict:
     if not 300 <= lease_seconds <= 7200:
         raise ValueError('lease_seconds must be between 300 and 7200')
     with database() as connection:
+        previous = connection.execute('''SELECT tasks.* FROM tasks
+            JOIN claims ON claims.task_id=tasks.id WHERE claims.claim_key=?''', (claim_key,)).fetchone()
+        if previous is None:
+            previous = connection.execute('SELECT * FROM tasks WHERE claim_key=? ORDER BY created_at LIMIT 1',
+                                          (claim_key,)).fetchone()
+        if previous is not None:
+            connection.execute('INSERT OR IGNORE INTO claims (claim_key,task_id) VALUES (?,?)',
+                               (claim_key, previous['id']))
+            if previous['claim_key'] == claim_key and previous['state'] in ['running', 'needs_attention']:
+                return {'task': view(previous, True), 'reused': True}
+            return {'task': None, 'busy': False, 'reused': True, 'previous_task_id': previous['id'],
+                    'previous_task_state': previous['state'],
+                    'instruction': 'This pickup has already been used. Use a new unique claim_key for a new manual pickup.'}
         active = connection.execute("SELECT * FROM tasks WHERE state IN ('running','needs_attention') LIMIT 1").fetchone()
         if active:
-            if active['claim_key'] == claim_key:
-                return {'task': view(active, True), 'reused': True}
             return {'task': None, 'busy': True, 'active_task_id': active['id'],
                     'needs_attention': bool(active['lease_until'] and active['lease_until'] < time.time())}
         row = connection.execute("SELECT * FROM tasks WHERE state='queued' ORDER BY created_at LIMIT 1").fetchone()
         if row is None:
-            return {'task': None, 'busy': False, 'instruction': 'Queue empty. Stop and wait for the user.'}
+            return {'task': None, 'busy': False,
+                    'instruction': 'Queue empty. Ask DSH to submit a specific task and return its task ID, then request a new manual pickup.'}
         now = time.time()
         connection.execute("UPDATE tasks SET state='running',claim_key=?,lease_token=?,lease_until=?,updated_at=? WHERE id=?",
                            (claim_key, secrets.token_urlsafe(24), now + lease_seconds, now, row['id']))
+        connection.execute('INSERT INTO claims (claim_key,task_id) VALUES (?,?)', (claim_key, row['id']))
         return {'task': view(task_row(connection, row['id']), True), 'reused': False}
 
 
-def owned_task(connection, task_id, lease_token):
+def owned_task(connection, task_id, lease_token, allow_delivery_retry=False):
     row = task_row(connection, task_id)
-    if row['state'] not in ['running', 'needs_attention'] or not row['lease_token']:
+    allowed = ['running', 'needs_attention']
+    if allow_delivery_retry:
+        allowed.extend(['awaiting_review', 'canceled'])
+    if row['state'] not in allowed or not row['lease_token']:
         raise ValueError('This task is not owned by an active desktop executor')
     if not secrets.compare_digest(row['lease_token'], lease_token):
         raise ValueError('Task ownership token does not match')
@@ -163,7 +183,7 @@ def report_delivery(task_id: str, lease_token: str, summary: str, artifacts: lis
     parent DSH independently checks it. Report blocked when native permission or user input is needed.
     """
     with database() as connection:
-        row = owned_task(connection, task_id, lease_token)
+        row = owned_task(connection, task_id, lease_token, allow_delivery_retry=True)
         project = Path(row['project']).resolve()
         paths = []
         for item in artifacts:
@@ -171,7 +191,7 @@ def report_delivery(task_id: str, lease_token: str, summary: str, artifacts: lis
             if not path.is_absolute():
                 path = project / path
             path = path.resolve()
-            if not path.is_relative_to(project) or not path.exists():
+            if not path.is_relative_to(project):
                 raise ValueError('Deliverables must exist inside the assigned project directory')
             paths.append(str(path))
         delivery = {'summary': summary, 'artifacts': paths, 'tests': tests}
@@ -181,8 +201,16 @@ def report_delivery(task_id: str, lease_token: str, summary: str, artifacts: lis
             state = 'needs_attention'
         else:
             state = 'awaiting_review'
+        payload = json.dumps(delivery, ensure_ascii=False)
+        if row['state'] == state and row['delivery'] == payload:
+            return {'task_id': task_id, 'state': state, 'reused': True,
+                    'instruction': 'Existing delivery receipt returned. Parent DSH independently reviews the deliverables.'}
+        if row['state'] in ['awaiting_review', 'canceled']:
+            raise ValueError('This delivery is already recorded. Its contents must match when retrying.')
+        if not all(Path(item).exists() for item in paths):
+            raise ValueError('Deliverables must exist inside the assigned project directory')
         connection.execute('UPDATE tasks SET state=?,delivery=?,updated_at=? WHERE id=?',
-                           (state, json.dumps(delivery, ensure_ascii=False), time.time(), task_id))
+                           (state, payload, time.time(), task_id))
         return {'task_id': task_id, 'state': state, 'instruction': 'Parent DSH must independently review the deliverables.'}
 
 

@@ -47,6 +47,7 @@ test('delivery wakes the original session once and does not auto-accept', async 
   await f.relay.tick();
   assert.equal(f.messages.length, 1);
   assert.equal(f.messages[0].source.kind, 'codearts-task-delivery');
+  assert.equal(f.messages[0].role, 'user');
   assert.match(f.messages[0].content[0].text, /queue_status/);
   assert.equal(f.queue.prepare('SELECT state FROM tasks').get().state, 'awaiting_review');
   await close(f);
@@ -125,5 +126,20 @@ test('session restoration errors back off and recover on a later attempt', async
   await f.relay.tick();
   assert.equal(f.messages.length, 1);
   assert.equal(f.relay.state.prepare('SELECT error FROM owners').get().error, null);
+  await close(f);
+});
+
+test('a delivery canceled during session restoration does not wake the model', async () => {
+  const f = fixture();
+  const originalAgent = f.ctx.agents.get();
+  f.ctx.agents.get = () => undefined;
+  f.ctx.sessionController.agents.resolveAgent = async () => {
+    f.queue.prepare('UPDATE tasks SET state=?').run('canceled');
+    return { agent: originalAgent };
+  };
+  f.queue.prepare('UPDATE tasks SET state=?,updated_at=?').run('awaiting_review', 2);
+  await f.relay.tick();
+  assert.equal(f.messages.length, 0);
+  assert.equal(f.relay.state.prepare('SELECT notification_until FROM owners').get().notification_until, 0);
   await close(f);
 });

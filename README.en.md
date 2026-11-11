@@ -4,7 +4,7 @@
 
 Delegate a bounded task from DeepSeek Harness to the CodeArts desktop app on the same computer. Pick it up manually in the official MCP connector. After delivery, the originating DSH session receives a notification and independently checks the actual files and tests.
 
-**`v0.1.0-alpha.1` is a community experimental release.** Automated checks cover the queue, configuration installer, real stdio MCP communication, and notification logic. The full CodeArts desktop model execution and subsequent DSH model review remain pending real-project validation.
+**`v0.1.0-alpha.2` is a community experimental release.** Live Windows desktop checks passed for submission, manual pickup, actual file delivery, automatic notification, independent DSH model review, rejection and revision, cancellation, and empty-queue handling. Automated checks also cover the queue, installer, stdio protocol, and relay. See the recorded versions and scope. [Live desktop verification](docs/desktop-verification-20261111.md)
 
 ## How it works
 
@@ -47,11 +47,11 @@ node --test tests/test_review_relay.mjs
 .\.venv\Scripts\python.exe scripts/configure.py --uninstall --profiles desktop
 ```
 
-Uninstall removes the project's configuration entries and marked instructions. Runtime history and backups are available in the selected data directory for your own retention decisions.
+Uninstall removes the selected profiles' configuration entries. Shared connector and instruction cleanup takes place when the final configured profile is removed. Runtime history and backups are available in the selected data directory for your own retention decisions.
 
 ## Compatibility and account risk
 
-Windows client integration was checked with DSH `0.2.2-rc.1` and CodeArts Desktop `0.2.8`. Other versions and operating systems need their own validation. The relay's session restoration uses DSH host interfaces that can change during its developer preview.
+Live Windows client integration was checked with DSH desktop `0.2.2-rc.1` (EXE product version `0.2.2.0`) and CodeArts Desktop `0.2.9`. The relay's session restoration uses DSH host interfaces that can change during its developer preview. Other versions and desktop operating systems need their own validation.
 
 Huawei documents custom local MCP connectors and asks users to assess third-party implementations. Account enforcement remains subject to platform terms and actual usage. The current implementation supports a lower-risk assessment based on architecture, with uncertainty about enforcement for this exact integration. Read the verification and data-flow notes before using sensitive projects. [Official connector documentation](https://support.huaweicloud.com/usermanual-codeartsdesktop/desktop_0015.html) [Service terms](https://www.huaweicloud.com/declaration/tsa-codearts-doer.html) [Architecture and data](docs/architecture-and-safety.md)
 

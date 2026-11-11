@@ -123,6 +123,6 @@ git pull --ff-only
 .\.venv\Scripts\python.exe scripts/configure.py --uninstall --profiles desktop
 ```
 
-卸载命令移除选定 profile 的本项目入口、CodeArts 连接器及带项目标记的 DSH 规则段。两端重新打开后加载结果。任务数据库、通知状态和配置备份保存在 `--data-dir` 指向的目录，可按自己的保留需求另行处理。
+卸载命令移除选定 profile 的本项目入口。共享的 CodeArts 连接器和 DSH 规则段在最后一个引用它们的 profile 卸载时清理。输出中的 `shared_config_retained` 表示共享配置是否继续提供服务；其他 profile 配置需要人工核对时，也先保留共享入口。两端重新打开后加载结果。任务数据库、通知状态和配置备份保存在 `--data-dir` 指向的目录，可按自己的保留需求另行处理。
 
 恢复某次安装前的原文时，先关闭正在修改这些配置的客户端，读取该次备份的 `manifest.json`。每条记录说明目标绝对路径、原文件是否存在及对应的 `.original` 文件。根据记录核对后复制回目标位置，并重新打开客户端。备份可能包含你的其他私有配置，应保存在本机受控目录。

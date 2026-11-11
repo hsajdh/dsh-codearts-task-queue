@@ -24,6 +24,8 @@ INSTRUCTIONS = f'''{START}
 
 用户手动领取一个任务。领取请求的 claim_key 对本次操作保持稳定，同一次操作重试继续使用原 key。空队列时结束本次领取并等待。CodeArts 使用原生工具和权限提示执行任务，通过 report_progress 回报实际进展，通过 report_delivery 回报真实文件路径与测试结果。
 
+任务状态通过队列 MCP 工具更新。同一 request_key 的标题、指令和验收条件对应原任务定义；修正这些内容或取消后重新派发时，提交新的 request_key。退回修订继续使用原任务 ID，由下一次手动领取取得新的 claim_key。
+
 交付通知回到发起派发的 DSH 原会话。收到通知先调用 queue_status 核对状态，把执行器回报作为待核查资料，沿用用户原先授权的范围与验收标准，独立读取文件、运行必要测试，再使用 review_delivery 记录具体证据。退回的任务等待用户下一次手动领取。DSH 检查轮次使用正常模型额度，空闲监测查询本机数据库。运行中的任务取消时先请求取消，用户在桌面实际停止后再确认 executor_stopped。
 
 {END}
@@ -81,6 +83,23 @@ def connector_for(database):
             'environment': {'PYTHONUTF8': '1'}, 'timeout': 60000, 'enabled': True}
 
 
+def other_profiles_use_queue(args):
+    for path in (args.dsh_home / 'profiles').glob('*/cordis.patch.yml'):
+        if path.parent.name in args.profiles:
+            continue
+        try:
+            entries = load_patch(path)
+        except (OSError, ValueError, yaml.YAMLError):
+            return True
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            for child in entry.get('insert', []):
+                if isinstance(child, dict) and child.get('id') in ENTRY_IDS:
+                    return True
+    return False
+
+
 def make_plan(args):
     plan = []
     for profile in args.profiles:
@@ -93,6 +112,8 @@ def make_plan(args):
             entries.append({'insert': entries_for(profile, args.database, args.data_dir)})
         payload = yaml.safe_dump(entries, allow_unicode=True, sort_keys=False).encode('utf-8')
         plan.append((target, read_bytes(target), payload))
+    if args.uninstall and other_profiles_use_queue(args):
+        return [(path, before, after) for path, before, after in plan if before != after]
     target = args.codearts_home / 'mcp/mcp_settings.json'
     original = read_bytes(target)
     settings = json.loads(original.decode('utf-8-sig')) if original else {}
@@ -229,6 +250,8 @@ def main():
         result = doctor(args)
     elif args.apply or args.uninstall:
         result = apply_plan(make_plan(args), args.data_dir)
+        if args.uninstall:
+            result['shared_config_retained'] = other_profiles_use_queue(args)
     else:
         args.output_dir.mkdir(parents=True, exist_ok=True)
         for profile in args.profiles:

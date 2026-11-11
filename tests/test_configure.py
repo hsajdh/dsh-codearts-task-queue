@@ -91,6 +91,17 @@ class ConfigurationTests(unittest.TestCase):
             configure.replace_file(target, b'Our update\n', original)
         self.assertEqual(target.read_bytes(), b'Concurrent user edit\n')
 
+    def test_uninstall_one_profile_keeps_shared_connector_for_the_other(self):
+        configure.apply_plan(configure.make_plan(self.args), self.args.data_dir)
+        self.args.uninstall = True
+        self.args.profiles = ['desktop']
+        configure.apply_plan(configure.make_plan(self.args), self.args.data_dir)
+        self.args.profiles = ['web']
+        self.assertTrue(configure.doctor(self.args)['configuration_ready'])
+        configure.apply_plan(configure.make_plan(self.args), self.args.data_dir)
+        settings = json.loads((self.args.codearts_home / 'mcp/mcp_settings.json').read_text(encoding='utf-8'))
+        self.assertNotIn('dsh-task-queue', settings['mcp'])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
