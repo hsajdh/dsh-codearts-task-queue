@@ -32,6 +32,30 @@ async def call(session, name, arguments):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_real_stdio_pickup_respects_workspace_scope(self):
+        parent = ROOT / 'tests/test-temp'
+        parent.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=parent) as temporary:
+            directory = Path(temporary).resolve()
+            workspace = directory / 'workspace'
+            nested = workspace / 'nested'
+            nested.mkdir(parents=True)
+            foreign = directory / 'workspace-other'
+            foreign.mkdir()
+            database = directory / 'queue.sqlite'
+
+            async def scenario():
+                async with server('dispatcher', database) as dispatch, server('executor', database) as execute:
+                    outside = await call(dispatch, 'submit_task', {'project_dir': str(foreign),
+                        'request_key': 'outside', 'title': 'Outside', 'instructions': 'Other workspace', 'acceptance': ['check']})
+                    wanted = await call(dispatch, 'submit_task', {'project_dir': str(nested),
+                        'request_key': 'inside', 'title': 'Inside', 'instructions': 'Current workspace', 'acceptance': ['check']})
+                    claim = await call(execute, 'claim_next', {'claim_key': 'scoped', 'project_dir': str(workspace)})
+                    self.assertEqual(claim['task']['id'], wanted['id'])
+                    self.assertEqual((await call(dispatch, 'queue_status', {'task_id': outside['id']}))['state'], 'queued')
+
+            asyncio.run(asyncio.wait_for(scenario(), timeout=40))
+
     def test_real_stdio_handoff_and_review(self):
         parent = ROOT / 'tests/test-temp'
         parent.mkdir(exist_ok=True)

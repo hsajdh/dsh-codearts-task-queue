@@ -1,6 +1,6 @@
 {
   "name": "dsh-codearts-task-queue",
-  "version": "0.1.0-alpha.2",
+  "version": "0.1.0-alpha.3",
   "private": true,
   "type": "module",
   "description": "Local MCP task handoff from DeepSeek Harness to CodeArts Desktop with independent DSH review",

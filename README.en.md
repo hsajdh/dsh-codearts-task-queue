@@ -4,7 +4,7 @@
 
 Delegate a bounded task from DeepSeek Harness to the CodeArts desktop app on the same computer. Pick it up manually in the official MCP connector. After delivery, the originating DSH session receives a notification and independently checks the actual files and tests.
 
-**`v0.1.0-alpha.2` is a community experimental release.** Live Windows desktop checks passed for submission, manual pickup, actual file delivery, automatic notification, independent DSH model review, rejection and revision, cancellation, and empty-queue handling. Automated checks also cover the queue, installer, stdio protocol, and relay. See the recorded versions and scope. [Live desktop verification](docs/desktop-verification-20261111.md)
+**`v0.1.0-alpha.3` is a community experimental release.** Live Windows desktop checks passed for submission, manual pickup, actual file delivery, automatic notification, independent DSH model review, rejection and revision, cancellation, and empty-queue handling. Automated checks also cover the queue, installer, stdio protocol, and relay. See the recorded versions and scope. [Live desktop verification](docs/desktop-verification-20261111.md)
 
 ## How it works
 
@@ -31,7 +31,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe scripts/configure.py --doctor --profiles desktop
 ```
 
-Restart both clients. In CodeArts Desktop, open Extensions → Connectors → Installed connectors and confirm that `dsh-task-queue` is connected. Choose “Use connector”. Ask DSH to delegate a small, clearly scoped task, then ask CodeArts to “领取并处理一个 DSH 任务” or “Receive and process one DSH task”.
+Restart both clients. In CodeArts Desktop, open Extensions → Connectors → Installed connectors and confirm that `dsh-task-queue` is connected. Choose “Use connector”. Ask DSH to delegate a small, clearly scoped task, then ask CodeArts to receive one task with `claim_next.project_dir` set to the current workspace's absolute path. The scope includes task subdirectories. Omitting this optional argument uses the global queue order.
 
 The installer backs up and updates the selected DSH patch files, the marked instructions in DSH's `AGENTS.md`, and the CodeArts connector. Existing YAML is reserialized and its original text is backed up. Installer tests cover concurrent-edit detection and rollback of partially applied changes.
 

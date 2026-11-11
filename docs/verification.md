@@ -2,7 +2,7 @@
 
 ## 版本与时间
 
-当前版本为 `v0.1.0-alpha.2`。记录日期为 2026-11-11。
+当前版本为 `v0.1.0-alpha.3`。记录日期为 2026-11-11。
 
 Windows 本机运行了队列、配置安装器、真实 stdio MCP 与 JavaScript 通知回归，并完成两个原生桌面客户端的真实模型执行。DSH 桌面包为 `0.2.2-rc.1`，EXE 产品版本为 `0.2.2.0`；CodeArts 桌面为 `0.2.9`。通知恢复针对当前 DSH 会话组合服务验证。初版原型的 CodeArts 连接观察版本为 `0.2.8`。
 
@@ -18,7 +18,7 @@ Windows 本机运行了队列、配置安装器、真实 stdio MCP 与 JavaScrip
 | 双桌面真实闭环 | CodeArts 原生工具生成文件和运行测试，原 DSH 会话自动收到通知并独立复跑、验收 | Windows 原生客户端及实际模型 |
 | 退回、修订与取消 | 故意不合格样本被 DSH 退回，同任务再次领取并修订通过；新排队任务取消，桌面领取返回空 | Windows 原生客户端及实际 MCP 工具 |
 
-Python 测试当前包括 23 项，JavaScript 测试当前包括 8 项。桌面实测同时使用执行器与复核方各自的解释器跑通三项 Python 用例，并核对文件原始字节。[真实桌面记录](desktop-verification-20261111.md)
+Python 测试当前包括 32 项，JavaScript 测试当前包括 8 项。新增检查覆盖工作区范围、子目录、历史领取范围及已移除客户端的卸载。桌面实测同时使用执行器与复核方各自的解释器跑通三项 Python 用例，并核对文件原始字节。[真实桌面记录](desktop-verification-20261111.md)
 
 2026-11-11，GitHub 的 Windows 与 Linux 工作节点均通过固定依赖安装及上述自动化测试。它们验证队列、配置、stdio 协议与通知逻辑，桌面客户端集成的操作系统范围仍按上表记录。[GitHub Checks](https://github.com/hsajdh/dsh-codearts-task-queue/actions/workflows/checks.yml)
 

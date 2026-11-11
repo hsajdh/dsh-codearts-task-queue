@@ -157,6 +157,41 @@ class QueueTests(unittest.TestCase):
                                          ['result.txt'], ['Marker file written'])
         self.assertTrue(repeated['reused'])
 
+    def test_project_scope_skips_an_older_foreign_task(self):
+        foreign = self.root / 'project-extra'
+        foreign.mkdir()
+        older = queue.submit_task(str(foreign), 'foreign', 'Foreign', 'Work elsewhere', ['check'])
+        wanted = self.submit()
+        picked = queue.claim_next('scoped', project_dir=str(self.project))
+        self.assertEqual(picked['task']['id'], wanted['id'])
+        self.assertEqual(queue.queue_status(older['id'])['state'], 'queued')
+
+    def test_project_scope_includes_a_task_subdirectory(self):
+        nested = self.project / 'nested'
+        nested.mkdir()
+        task = queue.submit_task(str(nested), 'nested', 'Nested', 'Nested work', ['check'])
+        self.assertEqual(queue.claim_next('nested-pickup', project_dir=str(self.project))['task']['id'], task['id'])
+
+    def test_empty_project_scope_keeps_other_projects_queued(self):
+        self.submit()
+        other = self.root / 'other'
+        other.mkdir()
+        self.assertIsNone(queue.claim_next('other-pickup', project_dir=str(other))['task'])
+        self.assertEqual(queue.queue_status()['counts'], {'queued': 1})
+
+    def test_replayed_pickup_does_not_reveal_a_lease_outside_scope(self):
+        self.submit()
+        original = queue.claim_next('pickup')
+        other = self.root / 'other'
+        other.mkdir()
+        replayed = queue.claim_next('pickup', project_dir=str(other))
+        self.assertIsNone(replayed['task'])
+        self.assertNotIn(original['task']['lease_token'], str(replayed))
+
+    def test_relative_project_scope_is_rejected(self):
+        with self.assertRaises(ValueError):
+            queue.claim_next('pickup', project_dir='relative-folder')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

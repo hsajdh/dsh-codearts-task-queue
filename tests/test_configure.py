@@ -102,6 +102,30 @@ class ConfigurationTests(unittest.TestCase):
         settings = json.loads((self.args.codearts_home / 'mcp/mcp_settings.json').read_text(encoding='utf-8'))
         self.assertNotIn('dsh-task-queue', settings['mcp'])
 
+    def test_uninstall_works_after_profile_package_was_removed(self):
+        configure.apply_plan(configure.make_plan(self.args), self.args.data_dir)
+        for profile in self.args.profiles:
+            (self.args.dsh_home / 'profiles' / profile / 'package.json').unlink()
+        self.args.uninstall = True
+        configure.apply_plan(configure.make_plan(self.args), self.args.data_dir)
+        self.assertNotIn(configure.START, (self.args.dsh_home / 'AGENTS.md').read_text(encoding='utf-8'))
+
+    def test_uninstall_missing_clients_is_a_noop(self):
+        self.args.dsh_home = self.root / 'removed-dsh'
+        self.args.codearts_home = self.root / 'removed-codearts'
+        self.args.uninstall = True
+        self.assertEqual(configure.make_plan(self.args), [])
+        self.assertFalse(self.args.dsh_home.exists())
+        self.assertFalse(self.args.codearts_home.exists())
+
+    def test_uninstall_preserves_unrelated_configuration_text(self):
+        for target in self.patches:
+            target.write_text('# User comment\n- id: unrelated\n  config: {custom: true}\n', encoding='utf-8')
+        settings = self.args.codearts_home / 'mcp/mcp_settings.json'
+        settings.write_text('{"other-setting": true}\n', encoding='utf-8')
+        self.args.uninstall = True
+        self.assertEqual(configure.make_plan(self.args), [])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

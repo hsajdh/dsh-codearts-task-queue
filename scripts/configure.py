@@ -22,7 +22,7 @@ INSTRUCTIONS = f'''{START}
 
 用户授权将当前项目任务交给 CodeArts 桌面时，使用 mcp__codearts_queue__submit_task，提供现有项目绝对目录、稳定 request_key、具体范围和验收标准。任务队列记录仅表示工作交接，实际操作须遵循当前用户授权和客户端权限。提示用户在 CodeArts 桌面使用 dsh-task-queue 连接器发送“领取并处理一个 DSH 任务”，并核对桌面工作目录与派发项目。
 
-用户手动领取一个任务。领取请求的 claim_key 对本次操作保持稳定，同一次操作重试继续使用原 key。空队列时结束本次领取并等待。CodeArts 使用原生工具和权限提示执行任务，通过 report_progress 回报实际进展，通过 report_delivery 回报真实文件路径与测试结果。
+用户手动领取一个任务。领取时将当前选定工作区的实际绝对路径作为 claim_next 的 project_dir，领取该目录及子目录的任务。claim_key 对本次操作保持稳定，同一次操作重试继续使用原 key。空队列时结束本次领取并等待。CodeArts 使用原生工具和权限提示执行任务，通过 report_progress 回报实际进展，通过 report_delivery 回报真实文件路径与测试结果。
 
 任务状态通过队列 MCP 工具更新。同一 request_key 的标题、指令和验收条件对应原任务定义；修正这些内容或取消后重新派发时，提交新的 request_key。退回修订继续使用原任务 ID，由下一次手动领取取得新的 claim_key。
 
@@ -104,10 +104,13 @@ def make_plan(args):
     plan = []
     for profile in args.profiles:
         directory = args.dsh_home / 'profiles' / profile
-        if not (directory / 'package.json').is_file():
+        if not args.uninstall and not (directory / 'package.json').is_file():
             raise ValueError('Start DSH once to initialize this profile, or adjust --profiles/--dsh-home. ' + str(directory))
         target = directory / 'cordis.patch.yml'
-        entries = without_our_entries(load_patch(target))
+        original_entries = load_patch(target)
+        entries = without_our_entries(original_entries)
+        if args.uninstall and entries == original_entries:
+            continue
         if not args.uninstall:
             entries.append({'insert': entries_for(profile, args.database, args.data_dir)})
         payload = yaml.safe_dump(entries, allow_unicode=True, sort_keys=False).encode('utf-8')
@@ -119,17 +122,21 @@ def make_plan(args):
     settings = json.loads(original.decode('utf-8-sig')) if original else {}
     if not isinstance(settings, dict) or not isinstance(settings.get('mcp', {}), dict):
         raise ValueError('Expected the CodeArts Desktop mcp configuration at ' + str(target))
-    if 'mcpServers' in settings and 'mcp' not in settings:
+    if not args.uninstall and 'mcpServers' in settings and 'mcp' not in settings:
         raise ValueError('This file uses a different client schema. Import generated/codearts.connector.json through the Desktop connector UI.')
-    connectors = settings.setdefault('mcp', {})
-    connectors.pop('dsh-task-queue', None)
-    if not args.uninstall:
-        connectors['dsh-task-queue'] = connector_for(args.database)
-    payload = (json.dumps(settings, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
-    plan.append((target, original, payload))
+    connectors = settings.get('mcp', {})
+    if not args.uninstall or 'dsh-task-queue' in connectors:
+        settings['mcp'] = connectors
+        connectors.pop('dsh-task-queue', None)
+        if not args.uninstall:
+            connectors['dsh-task-queue'] = connector_for(args.database)
+        payload = (json.dumps(settings, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
+        plan.append((target, original, payload))
     target = args.dsh_home / 'AGENTS.md'
     original = read_bytes(target)
     text = original.decode('utf-8-sig') if original else ''
+    if args.uninstall and START not in text:
+        return [(path, before, after) for path, before, after in plan if before != after]
     text = re.sub(re.escape(START) + r'.*?' + re.escape(END) + r'\n?', '', text, flags=re.DOTALL)
     if not args.uninstall:
         text = text.rstrip() + '\n\n' + INSTRUCTIONS

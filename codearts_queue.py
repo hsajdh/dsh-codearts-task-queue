@@ -70,6 +70,20 @@ def validate_key(key: str):
         raise ValueError('Provide a nonempty key of at most 120 characters')
 
 
+def project_directory(value: str) -> Path:
+    folder = Path(value).expanduser()
+    if not folder.is_absolute() or not folder.is_dir():
+        raise ValueError('project_dir must be an existing absolute project directory')
+    return folder.resolve()
+
+
+def within_project(project: str, scope: Path | None) -> bool:
+    if scope is None:
+        return True
+    path = Path(project)
+    return path.is_relative_to(scope) and path.resolve().is_relative_to(scope)
+
+
 def submit_task(project_dir: str, request_key: str, title: str, instructions: str,
                 acceptance: list[str]) -> dict:
     """Queue one user-authorized task for CodeArts Desktop. Reuse request_key when retrying.
@@ -78,14 +92,12 @@ def submit_task(project_dir: str, request_key: str, title: str, instructions: st
     DSH remains responsible for independently reviewing files and tests after delivery.
     """
     validate_key(request_key)
-    folder = Path(project_dir).expanduser()
-    if not folder.is_absolute() or not folder.is_dir():
-        raise ValueError('project_dir must be an existing absolute project directory')
+    folder = project_directory(project_dir)
     if not title.strip() or not instructions.strip() or len(instructions) > 100000:
         raise ValueError('Provide a title and nonempty instructions of at most 100000 characters')
     if not acceptance or len(acceptance) > 30 or not all(item.strip() for item in acceptance):
         raise ValueError('Provide 1-30 concrete acceptance criteria')
-    project = str(folder.resolve())
+    project = str(folder)
     criteria = json.dumps(acceptance, ensure_ascii=False)
     with database() as connection:
         previous = connection.execute('SELECT * FROM tasks WHERE project=? AND request_key=?',
@@ -114,16 +126,19 @@ def queue_status(task_id: str = '') -> dict:
         return {'counts': counts, 'tasks': [view(row) for row in rows]}
 
 
-def claim_next(claim_key: str, lease_seconds: int = 3600) -> dict:
+def claim_next(claim_key: str, lease_seconds: int = 3600, project_dir: str = '') -> dict:
     """Receive one task in CodeArts Desktop after the user asks to receive a DSH task.
 
     Use one stable claim_key for this receive action and reuse it on retries. Only one
     task executes at a time. When the queue is empty, stop without polling or scheduling.
     Respect the project directory and all native CodeArts permission confirmations.
+    Provide the current workspace's absolute project_dir to receive its tasks and
+    tasks in its subdirectories. An empty project_dir keeps global queue ordering.
     """
     validate_key(claim_key)
     if not 300 <= lease_seconds <= 7200:
         raise ValueError('lease_seconds must be between 300 and 7200')
+    scope = project_directory(project_dir) if project_dir else None
     with database() as connection:
         previous = connection.execute('''SELECT tasks.* FROM tasks
             JOIN claims ON claims.task_id=tasks.id WHERE claims.claim_key=?''', (claim_key,)).fetchone()
@@ -133,19 +148,27 @@ def claim_next(claim_key: str, lease_seconds: int = 3600) -> dict:
         if previous is not None:
             connection.execute('INSERT OR IGNORE INTO claims (claim_key,task_id) VALUES (?,?)',
                                (claim_key, previous['id']))
-            if previous['claim_key'] == claim_key and previous['state'] in ['running', 'needs_attention']:
+            if (previous['claim_key'] == claim_key and previous['state'] in ['running', 'needs_attention']
+                    and within_project(previous['project'], scope)):
                 return {'task': view(previous, True), 'reused': True}
             return {'task': None, 'busy': False, 'reused': True, 'previous_task_id': previous['id'],
                     'previous_task_state': previous['state'],
-                    'instruction': 'This pickup has already been used. Use a new unique claim_key for a new manual pickup.'}
+                    'instruction': 'This pickup is finished or belongs to another project scope. '
+                                   'Use a new unique claim_key for a new manual pickup.'}
         active = connection.execute("SELECT * FROM tasks WHERE state IN ('running','needs_attention') LIMIT 1").fetchone()
         if active:
             return {'task': None, 'busy': True, 'active_task_id': active['id'],
+                    'active_project': active['project'],
                     'needs_attention': bool(active['lease_until'] and active['lease_until'] < time.time())}
-        row = connection.execute("SELECT * FROM tasks WHERE state='queued' ORDER BY created_at LIMIT 1").fetchone()
+        row = None
+        for candidate in connection.execute("SELECT * FROM tasks WHERE state='queued' ORDER BY created_at"):
+            if within_project(candidate['project'], scope):
+                row = candidate
+                break
         if row is None:
             return {'task': None, 'busy': False,
-                    'instruction': 'Queue empty. Ask DSH to submit a specific task and return its task ID, then request a new manual pickup.'}
+                    'instruction': 'No queued task matches this pickup scope. Ask DSH to submit a task '
+                                   'for the selected project and return its ID, then request a new manual pickup.'}
         now = time.time()
         connection.execute("UPDATE tasks SET state='running',claim_key=?,lease_token=?,lease_until=?,updated_at=? WHERE id=?",
                            (claim_key, secrets.token_urlsafe(24), now + lease_seconds, now, row['id']))
