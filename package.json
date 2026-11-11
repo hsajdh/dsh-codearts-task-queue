@@ -1,0 +1,10 @@
+{
+  "name": "dsh-codearts-task-queue",
+  "version": "0.1.0-alpha.1",
+  "private": true,
+  "type": "module",
+  "description": "Local MCP task handoff from DeepSeek Harness to CodeArts Desktop with independent DSH review",
+  "license": "MIT",
+  "engines": {"node": ">=24"},
+  "scripts": {"test": "node --test tests/test_review_relay.mjs"}
+}

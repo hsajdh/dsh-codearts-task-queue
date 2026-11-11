@@ -1,0 +1,16 @@
+{
+  "dsh-task-queue": {
+    "type": "local",
+    "command": [
+      "PYTHON_EXE",
+      "REPO_DIR/codearts_queue.py",
+      "--role",
+      "executor",
+      "--database",
+      "DATA_DIR/queue.sqlite"
+    ],
+    "environment": {"PYTHONUTF8": "1"},
+    "timeout": 60000,
+    "enabled": true
+  }
+}

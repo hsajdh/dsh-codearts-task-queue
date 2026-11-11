@@ -1,0 +1,122 @@
+# DSH × CodeArts Desktop Task Queue
+
+[English](README.en.md) · [安装与本地接入](docs/installation.md) · [使用与工具参数](docs/usage.md) · [故障排查](docs/troubleshooting.md) · [验证范围](docs/verification.md)
+
+把 DeepSeek Harness 的具体开发任务交给本机 CodeArts 桌面端。你在桌面手动领取，CodeArts 完成交付后，由发起任务的 DSH 会话独立检查文件、运行必要测试并记录验收结果。
+
+**当前版本为 `v0.1.0-alpha.1` 社区实验版。** 本地队列、真实 stdio MCP 协议、配置安装器及通知逻辑已经过自动化检查。CodeArts 桌面实际执行到 DSH 模型验收的完整链路仍待真实项目验证，具体范围见验证记录。
+
+```mermaid
+flowchart LR
+    U[用户在 DSH 明确任务] --> D[DSH 提交本机队列]
+    D --> C[用户在 CodeArts 桌面手动领取]
+    C --> W[CodeArts 原生工具执行]
+    W --> F[回报文件路径与测试结果]
+    F --> N[通知原 DSH 会话]
+    N --> R[DSH 独立检查与验收]
+    R -->|退回修改| D
+```
+
+## 适合怎样的工作
+
+- DSH 负责拆解需求，把范围明确的实现任务交给 CodeArts 桌面。
+- 开发者希望看见桌面执行过程，并保留原生文件、终端及权限确认。
+- 任务完成后，希望主 DSH 会话读取真实文件、核对测试并决定是否接受交付。
+- 领取频率由用户掌握，空闲时通过本机数据库监测交付状态。
+
+## 工作方式
+
+| 组件 | 职责 |
+| --- | --- |
+| `codearts_queue.py --role dispatcher` | 向 DSH 提供提交、查询、验收、取消四个 MCP 工具 |
+| `codearts_queue.py --role executor` | 向 CodeArts 官方连接器提供领取、进度、交付三个工具 |
+| `relay/index.js` | 绑定任务与发起 DSH 会话，在交付后发送检查通知 |
+| SQLite 队列 | 保存项目路径、任务要求、领取归属、进度和验收证据 |
+| `scripts/configure.py` | 生成配置、备份接入、静态检查及卸载 |
+
+登录、账号凭据、模型调用和计费由对应官方客户端处理。队列程序通过本地 stdio MCP 与客户端通信，交付以项目文件路径和回报记录表达。
+
+## 准备条件
+
+- 同一台电脑上的 DeepSeek Harness 桌面端或本地 web profile，已经能够正常使用。
+- CodeArts 桌面端，已经登录并具有可用模型额度。
+- Python 3.11 或更高版本，用于运行 MCP 服务和安装脚本。
+- DSH 宿主支持 `node:sqlite`，本机验证使用 DSH `0.2.2-rc.1` 的 Node 24 运行时。
+- 运行 JavaScript 回归检查时使用独立 Node.js 24。
+
+本机客户端接入在 Windows 上验证。其他操作系统的配置路径与桌面行为需要分别确认。DSH 仍处于开发者预览期，升级后的接口兼容性需要重新核对。[DSH 官方说明](https://github.com/deepseek-ai/deepseek-harness)
+
+## Windows 快速接入
+
+先启动 DSH 和 CodeArts 桌面各一次，让客户端建立用户配置目录。下面命令在 PowerShell 中运行。
+
+```powershell
+git clone https://github.com/hsajdh/dsh-codearts-task-queue.git
+Set-Location dsh-codearts-task-queue
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe scripts\configure.py --apply --profiles desktop
+.\.venv\Scripts\python.exe scripts\configure.py --doctor --profiles desktop
+```
+
+配置脚本使用当前虚拟环境的 Python 路径，并将其写入两端连接设置。`--apply` 会备份并更新选定的 DSH profile、DSH 全局规则和 CodeArts 连接器配置。已有 YAML 配置会由解析器重新序列化，原文保存于备份。配置写入遇到并发编辑或中途失败时，会检测冲突并尝试恢复已写入文件。
+
+重新打开 DSH 和 CodeArts 桌面，在 CodeArts 的“扩展 → 连接器 → 我安装的连接器”中检查 `dsh-task-queue` 卡片。卡片显示“已连接”后，单击“使用连接器”。自定义目录、web profile、手动导入和旧配置迁移见安装文档。[安装与本地接入](docs/installation.md)
+
+## 第一个任务
+
+先选一个你愿意用于验收的项目目录，在 CodeArts 桌面也打开对应项目。把下面示例的路径替换成实际目录，再发给 DSH。
+
+```text
+把这个任务交给 CodeArts 桌面，完成后由你独立验收。
+项目目录是 C:/projects/demo。
+范围是在这个目录内创建 hello.txt，内容为 HELLO_CODEARTS 加一个换行。
+验收要求是文件路径和内容准确。
+提交后告诉我任务 ID，等待我去 CodeArts 手动领取。
+```
+
+DSH 提交成功后，在 CodeArts 桌面的 `dsh-task-queue` 连接器会话中发送下面这句话。
+
+```text
+领取并处理一个 DSH 任务。核对返回的项目目录和验收标准，使用原生工具执行，完成后通过连接器回报交付。
+```
+
+CodeArts 回报后，队列进入 `awaiting_review`，通知插件将消息送回原 DSH 会话。DSH 应读取文件、核对用户要求并写入验收证据。通过时状态为 `accepted`，退回时状态为 `queued`，等待下一次手动领取。
+
+收到交付后，DSH 的检查轮次会使用 DSH 当前模型的正常额度。CodeArts 的执行消耗其正常额度。空闲通知监测每两秒检查本机数据库。DSH 关闭期间的交付由发起任务的原 profile 在下次启动后处理。
+
+## 数据位置
+
+默认运行数据放在当前用户目录下的 `.dsh-codearts-task-queue`。
+
+```text
+~/.dsh-codearts-task-queue/
+  queue.sqlite       本机任务与交付记录
+  review.sqlite      任务与原 DSH 会话的通知归属
+  backups/           配置原文与安装恢复清单
+```
+
+安装后请保留仓库和虚拟环境所在目录。两端配置引用它们的绝对路径。移动目录后，使用新位置的虚拟环境重新运行接入命令。[配置路径与迁移](docs/installation.md)
+
+## 账号与权限
+
+本项目通过华为官方支持的自定义本地 MCP 功能接入。第三方 MCP 的代码实现和数据处理行为由使用者评估，账号封禁风险缺少可验证的概率数据。当前实现的风险判断与验证范围应结合官方文档和服务条款理解。[官方连接器文档](https://support.huaweicloud.com/usermanual-codeartsdesktop/desktop_0015.html) [CodeArts 服务声明](https://www.huaweicloud.com/declaration/tsa-codearts-doer.html)
+
+本地任务库会保存任务文字、项目路径、进度、测试回报和验收证据。交付路径校验覆盖项目范围，实际文件与终端操作权限由客户端配置决定。DSH 后续读取交付时，也受其模型服务和文件权限设置影响。[架构、数据与账号风险](docs/architecture-and-safety.md)
+
+## 测试与维护
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
+node --test tests/test_review_relay.mjs
+```
+
+这些测试使用临时数据库、模拟文件交付及本地 MCP 进程。桌面模型完整执行的验证状态单独记录。[验证范围](docs/verification.md)
+
+问题反馈请写明操作系统、DSH/CodeArts/Python 版本、复现步骤与期望结果，并先清理任务内容中的个人信息。[故障排查](docs/troubleshooting.md)
+
+## 同类工作与许可
+
+跨智能体派发、交付回传和独立验收已有社区实践。相关项目包括 `dsh-baton` 和 `codex-deepseek-harness-bridge`。本仓库实现面向 CodeArts 桌面手动领取的本地队列工作流。[dsh-baton](https://github.com/JialaoLiu/dsh-baton) [codex-deepseek-harness-bridge](https://github.com/WiscOBKenobi/codex-deepseek-harness-bridge)
+
+自写代码采用 MIT 许可证。第三方依赖与产品名称说明见对应文件。[MIT 许可证](LICENSE) [第三方说明](THIRD_PARTY_NOTICES.md) [版本记录](CHANGELOG.md)

@@ -1,0 +1,16 @@
+- insert:
+    - id: codearts-desktop-queue
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: codearts_queue
+        transport: stdio
+        command: PYTHON_EXE
+        args: [REPO_DIR/codearts_queue.py, --role, dispatcher, --database, DATA_DIR/queue.sqlite]
+        env: {PYTHONUTF8: '1'}
+        toolCallTimeoutMs: 60000
+    - id: codearts-review-notifications
+      name: REPO_DIR/relay/index.js
+      config:
+        profileName: desktop
+        databasePath: DATA_DIR/queue.sqlite
+        statePath: DATA_DIR/review.sqlite
