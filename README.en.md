@@ -2,14 +2,14 @@
 
 [简体中文](README.md) · [Installation](docs/installation.md) · [Tools and workflow](docs/usage.md) · [Verification scope](docs/verification.md)
 
-Delegate a bounded task from DeepSeek Harness to the CodeArts desktop app on the same computer. Pick it up manually in the official MCP connector. After delivery, the originating DSH session receives a notification and independently checks the actual files and tests.
+Delegate a bounded task from DeepSeek Harness to the CodeArts desktop app on the same computer. Receive it through a desktop message or a user-configured native CodeArts schedule. After delivery, the originating DSH session receives a notification and independently checks the actual files and tests.
 
-**`v0.1.0-alpha.3` is a community experimental release.** Live Windows desktop checks passed for submission, manual pickup, actual file delivery, automatic notification, independent DSH model review, rejection and revision, cancellation, and empty-queue handling. Automated checks also cover the queue, installer, stdio protocol, and relay. See the recorded versions and scope. [Live desktop verification](docs/desktop-verification-20261111.md)
+**`v0.1.0-alpha.4` is a community experimental release.** Live Windows desktop checks passed for submission, manual and native scheduled pickup, actual file delivery, automatic notification, independent DSH model review, rejection and revision, cancellation, and empty-queue handling. See the recorded versions and scope. [Live desktop verification](docs/desktop-verification-20261111.md) [Native scheduled pickup](docs/automation.md)
 
 ## How it works
 
 1. DSH submits a task with an existing absolute project directory, instructions and acceptance criteria.
-2. You open that project in CodeArts Desktop and ask the `dsh-task-queue` connector to receive one task.
+2. A desktop message or an authorized native CodeArts schedule asks the `dsh-task-queue` connector to receive one task within the selected project.
 3. CodeArts uses its native tools and permissions, then reports artifact paths and actual test results through MCP.
 4. The local relay notifies the originating DSH session.
 5. DSH inspects the files, runs necessary tests, and records acceptance or returns the task with feedback.

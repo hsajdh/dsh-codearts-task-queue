@@ -88,7 +88,8 @@ def submit_task(project_dir: str, request_key: str, title: str, instructions: st
                 acceptance: list[str]) -> dict:
     """Queue one user-authorized task for CodeArts Desktop. Reuse request_key when retrying.
 
-    The user manually asks CodeArts Desktop to receive a task through its official connector.
+    CodeArts Desktop receives through its official connector in a user-authorized
+    manual run or native scheduled run.
     DSH remains responsible for independently reviewing files and tests after delivery.
     """
     validate_key(request_key)
@@ -113,7 +114,8 @@ def submit_task(project_dir: str, request_key: str, title: str, instructions: st
             (id,project,request_key,title,instructions,acceptance,created_at,updated_at)
             VALUES (?,?,?,?,?,?,?,?)''', (task_id, project, request_key, title, instructions, criteria, now, now))
         return {**view(task_row(connection, task_id)),
-                'next_step': 'In CodeArts Desktop, use the DSH task queue connector and send: 领取并处理一个 DSH 任务'}
+                'next_step': 'An authorized native CodeArts schedule can receive this task. '
+                             'For manual pickup, use the DSH task queue connector and send: 领取并处理一个 DSH 任务'}
 
 
 def queue_status(task_id: str = '') -> dict:
@@ -127,10 +129,11 @@ def queue_status(task_id: str = '') -> dict:
 
 
 def claim_next(claim_key: str, lease_seconds: int = 3600, project_dir: str = '') -> dict:
-    """Receive one task in CodeArts Desktop after the user asks to receive a DSH task.
+    """Receive one task in an authorized manual or native scheduled CodeArts Desktop run.
 
     Use one stable claim_key for this receive action and reuse it on retries. Only one
-    task executes at a time. When the queue is empty, stop without polling or scheduling.
+    task executes at a time. When the queue is empty or busy, finish this run.
+    Future scheduled runs are configured through the official desktop scheduler.
     Respect the project directory and all native CodeArts permission confirmations.
     Provide the current workspace's absolute project_dir to receive its tasks and
     tasks in its subdirectories. An empty project_dir keeps global queue ordering.
@@ -154,7 +157,7 @@ def claim_next(claim_key: str, lease_seconds: int = 3600, project_dir: str = '')
             return {'task': None, 'busy': False, 'reused': True, 'previous_task_id': previous['id'],
                     'previous_task_state': previous['state'],
                     'instruction': 'This pickup is finished or belongs to another project scope. '
-                                   'Use a new unique claim_key for a new manual pickup.'}
+                                   'Use a new unique claim_key for a new pickup run.'}
         active = connection.execute("SELECT * FROM tasks WHERE state IN ('running','needs_attention') LIMIT 1").fetchone()
         if active:
             return {'task': None, 'busy': True, 'active_task_id': active['id'],
@@ -168,7 +171,7 @@ def claim_next(claim_key: str, lease_seconds: int = 3600, project_dir: str = '')
         if row is None:
             return {'task': None, 'busy': False,
                     'instruction': 'No queued task matches this pickup scope. Ask DSH to submit a task '
-                                   'for the selected project and return its ID, then request a new manual pickup.'}
+                                   'for the selected project. Finish this run and wait for the next authorized pickup.'}
         now = time.time()
         connection.execute("UPDATE tasks SET state='running',claim_key=?,lease_token=?,lease_until=?,updated_at=? WHERE id=?",
                            (claim_key, secrets.token_urlsafe(24), now + lease_seconds, now, row['id']))
@@ -283,7 +286,8 @@ def main():
     DATABASE = DATABASE.resolve()
     mcp = FastMCP('DSH CodeArts Desktop Queue', instructions=(
         'Use this local queue only for current user-authorized DSH delegation. '
-        'CodeArts Desktop receives one task when the user asks. Do not loop on an empty queue. '
+        'CodeArts Desktop receives one task per user-authorized manual or native scheduled run. '
+        'Finish an empty or busy pickup. Future runs use the official desktop scheduler. '
         'Preserve native permission confirmations. Report project deliverables through tools. '
         'DSH separately inspects files and tests before accepting delivery.'))
     read_only = {'readOnlyHint': True, 'openWorldHint': False}

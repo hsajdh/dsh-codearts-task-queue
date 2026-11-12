@@ -69,8 +69,11 @@ class ProtocolTests(unittest.TestCase):
                 async with server('dispatcher', database) as dispatch, server('executor', database) as execute:
                     self.assertEqual({tool.name for tool in (await dispatch.list_tools()).tools},
                                      {'submit_task', 'queue_status', 'review_delivery', 'cancel_task'})
-                    self.assertEqual({tool.name for tool in (await execute.list_tools()).tools},
+                    executor_tools = (await execute.list_tools()).tools
+                    self.assertEqual({tool.name for tool in executor_tools},
                                      {'claim_next', 'report_progress', 'report_delivery'})
+                    claim_tool = next(tool for tool in executor_tools if tool.name == 'claim_next')
+                    self.assertIn('native scheduled', claim_tool.description)
                     task = await call(dispatch, 'submit_task', {'project_dir': str(project),
                         'request_key': 'isolated-protocol', 'title': 'Protocol fixture',
                         'instructions': 'Create result.txt in this isolated fixture', 'acceptance': ['Exact marker']})

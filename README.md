@@ -1,15 +1,15 @@
 # DSH × CodeArts Desktop Task Queue
 
-[English](README.en.md) · [安装与本地接入](docs/installation.md) · [使用与工具参数](docs/usage.md) · [故障排查](docs/troubleshooting.md) · [验证范围](docs/verification.md)
+[English](README.en.md) · [安装与本地接入](docs/installation.md) · [使用与工具参数](docs/usage.md) · [原生定时自动领取](docs/automation.md) · [故障排查](docs/troubleshooting.md) · [验证范围](docs/verification.md)
 
-把 DeepSeek Harness 的具体开发任务交给本机 CodeArts 桌面端。你在桌面手动领取，CodeArts 完成交付后，由发起任务的 DSH 会话独立检查文件、运行必要测试并记录验收结果。
+把 DeepSeek Harness 的具体开发任务交给本机 CodeArts 桌面端。通过桌面消息或用户配置的官方原生定时任务领取，CodeArts 完成交付后，由发起任务的 DSH 会话独立检查文件、运行必要测试并记录验收结果。
 
-**当前版本为 `v0.1.0-alpha.3` 社区实验版。** Windows 本机真实桌面闭环已通过，覆盖派发、手动领取、文件交付、自动通知、DSH 独立验收、退回修订、取消及空队列。自动化检查覆盖队列、安装器与通知逻辑，适用版本和实测范围见验证记录。[真实桌面验收](docs/desktop-verification-20261111.md)
+**当前版本为 `v0.1.0-alpha.4` 社区实验版。** Windows 本机真实桌面闭环已通过，覆盖派发、手动领取、官方定时领取、文件交付、自动通知、DSH 独立验收、退回修订、取消及空队列。适用版本和实测范围见验证记录。[真实桌面验收](docs/desktop-verification-20261111.md) [原生定时领取与验收](docs/automation.md)
 
 ```mermaid
 flowchart LR
     U[用户在 DSH 明确任务] --> D[DSH 提交本机队列]
-    D --> C[用户在 CodeArts 桌面手动领取]
+    D --> C[桌面消息或官方原生定时领取]
     C --> W[CodeArts 原生工具执行]
     W --> F[回报文件路径与测试结果]
     F --> N[通知原 DSH 会话]
@@ -84,7 +84,9 @@ DSH 提交成功后，在 CodeArts 桌面的 `dsh-task-queue` 连接器会话中
 领取并处理当前工作区的一个 DSH 任务，将当前工作区绝对路径传给 claim_next 的 project_dir。核对返回的项目目录和验收标准，使用原生工具执行，完成后通过连接器回报交付。
 ```
 
-CodeArts 回报后，队列进入 `awaiting_review`，通知插件将消息送回原 DSH 会话。DSH 应读取文件、核对用户要求并写入验收证据。通过时状态为 `accepted`，退回时状态为 `queued`，等待下一次手动领取。
+CodeArts 回报后，队列进入 `awaiting_review`，通知插件将消息送回原 DSH 会话。DSH 应读取文件、核对用户要求并写入验收证据。通过时状态为 `accepted`，退回时状态为 `queued`，等待下一轮授权领取。
+
+需要自动领取时，可在 CodeArts 官方定时任务中固定项目目录、设置执行时段，并确认本地队列工具的执行权限。完整创建步骤、提示词和实测范围见自动领取说明。[原生定时自动领取](docs/automation.md)
 
 收到交付后，DSH 的检查轮次会使用 DSH 当前模型的正常额度。CodeArts 的执行消耗其正常额度。空闲通知监测每两秒检查本机数据库。DSH 关闭期间的交付由发起任务的原 profile 在下次启动后处理。
 
@@ -120,6 +122,6 @@ node --test tests/test_review_relay.mjs
 
 ## 同类工作与许可
 
-跨智能体派发、交付回传和独立验收已有社区实践。相关项目包括 `dsh-baton` 和 `codex-deepseek-harness-bridge`。本仓库实现面向 CodeArts 桌面手动领取的本地队列工作流。[dsh-baton](https://github.com/JialaoLiu/dsh-baton) [codex-deepseek-harness-bridge](https://github.com/WiscOBKenobi/codex-deepseek-harness-bridge)
+跨智能体派发、交付回传和独立验收已有社区实践。相关项目包括 `dsh-baton` 和 `codex-deepseek-harness-bridge`。本仓库实现面向 CodeArts 桌面的本地队列工作流。[dsh-baton](https://github.com/JialaoLiu/dsh-baton) [codex-deepseek-harness-bridge](https://github.com/WiscOBKenobi/codex-deepseek-harness-bridge)
 
 自写代码采用 MIT 许可证。第三方依赖与产品名称说明见对应文件。[MIT 许可证](LICENSE) [第三方说明](THIRD_PARTY_NOTICES.md) [版本记录](CHANGELOG.md)

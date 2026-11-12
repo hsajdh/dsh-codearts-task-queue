@@ -20,13 +20,13 @@ START = '<!-- BEGIN dsh-codearts-task-queue -->'
 END = '<!-- END dsh-codearts-task-queue -->'
 INSTRUCTIONS = f'''{START}
 
-用户授权将当前项目任务交给 CodeArts 桌面时，使用 mcp__codearts_queue__submit_task，提供现有项目绝对目录、稳定 request_key、具体范围和验收标准。任务队列记录仅表示工作交接，实际操作须遵循当前用户授权和客户端权限。提示用户在 CodeArts 桌面使用 dsh-task-queue 连接器发送“领取并处理一个 DSH 任务”，并核对桌面工作目录与派发项目。
+用户授权将当前项目任务交给 CodeArts 桌面时，使用 mcp__codearts_queue__submit_task，提供现有项目绝对目录、稳定 request_key、具体范围和验收标准。任务队列记录仅表示工作交接，实际操作须遵循当前用户授权和客户端权限。沿用用户选择的领取模式，已配置官方原生定时任务时等待对应工作区的下一轮领取；手动模式提示在 dsh-task-queue 连接器发送“领取并处理一个 DSH 任务”。核对桌面工作目录与派发项目。
 
-用户手动领取一个任务。领取时将当前选定工作区的实际绝对路径作为 claim_next 的 project_dir，领取该目录及子目录的任务。claim_key 对本次操作保持稳定，同一次操作重试继续使用原 key。空队列时结束本次领取并等待。CodeArts 使用原生工具和权限提示执行任务，通过 report_progress 回报实际进展，通过 report_delivery 回报真实文件路径与测试结果。
+每次经用户授权的手动或官方原生定时运行领取一个任务。领取时将当前选定工作区的实际绝对路径作为 claim_next 的 project_dir，领取该目录及子目录的任务。每轮使用新的 claim_key，同一轮重试继续使用原 key。空队列或忙碌时结束本轮。后续触发由已配置的官方调度处理。CodeArts 使用原生工具和权限提示执行任务，通过 report_progress 回报实际进展，通过 report_delivery 回报真实文件路径与测试结果。
 
-任务状态通过队列 MCP 工具更新。同一 request_key 的标题、指令和验收条件对应原任务定义；修正这些内容或取消后重新派发时，提交新的 request_key。退回修订继续使用原任务 ID，由下一次手动领取取得新的 claim_key。
+任务状态通过队列 MCP 工具更新。同一 request_key 的标题、指令和验收条件对应原任务定义；修正这些内容或取消后重新派发时，提交新的 request_key。退回修订继续使用原任务 ID，由下一轮领取取得新的 claim_key。
 
-交付通知回到发起派发的 DSH 原会话。收到通知先调用 queue_status 核对状态，把执行器回报作为待核查资料，沿用用户原先授权的范围与验收标准，独立读取文件、运行必要测试，再使用 review_delivery 记录具体证据。退回的任务等待用户下一次手动领取。DSH 检查轮次使用正常模型额度，空闲监测查询本机数据库。运行中的任务取消时先请求取消，用户在桌面实际停止后再确认 executor_stopped。
+交付通知回到发起派发的 DSH 原会话。收到通知先调用 queue_status 核对状态，把执行器回报作为待核查资料，沿用用户原先授权的范围与验收标准，独立读取文件、运行必要测试，再使用 review_delivery 记录具体证据。退回的任务等待下一轮授权领取。DSH 检查轮次使用正常模型额度，空闲监测查询本机数据库。运行中的任务取消时先请求取消，用户在桌面实际停止后再确认 executor_stopped。
 
 {END}
 '''
