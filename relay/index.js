@@ -70,9 +70,10 @@ export class ReviewRelay {
         .get(delivery.id, this.profile);
       const now = Date.now() / 1000;
       if (!owner || owner.last_delivery >= delivery.updated_at || owner.next_retry > now) continue;
+      let notificationUntil = now + 60;
       const claimed = this.state.prepare(`UPDATE owners SET notification_until=?
         WHERE task_id=? AND last_delivery<? AND notification_until<? AND next_retry<=?`)
-        .run(now + 60, delivery.id, delivery.updated_at, now, now);
+        .run(notificationUntil, delivery.id, delivery.updated_at, now, now);
       if (!claimed.changes) continue;
       try {
         let agent = this.ctx.agents.get(owner.session_id);
@@ -91,9 +92,16 @@ export class ReviewRelay {
           currentQueue.close();
         }
         if (!['awaiting_review', 'needs_attention'].includes(current?.state) || current.updated_at !== delivery.updated_at) {
-          this.state.prepare('UPDATE owners SET notification_until=0 WHERE task_id=?').run(delivery.id);
+          this.state.prepare('UPDATE owners SET notification_until=0 WHERE task_id=? AND notification_until=?')
+            .run(delivery.id, notificationUntil);
           continue;
         }
+        const renewedUntil = Math.max(notificationUntil, Date.now() / 1000 + 60);
+        const renewed = this.state.prepare(`UPDATE owners SET notification_until=?
+          WHERE task_id=? AND notification_until=? AND last_delivery<?`)
+          .run(renewedUntil, delivery.id, notificationUntil, delivery.updated_at);
+        if (!renewed.changes) continue;
+        notificationUntil = renewedUntil;
         const revision = Math.round(delivery.updated_at * 1000);
         await agent.followup({ role: 'user', id: `codearts-delivery-${delivery.id}-${revision}`,
           source: { kind: 'codearts-task-delivery', taskId: delivery.id },
@@ -104,11 +112,14 @@ export class ReviewRelay {
             '状态为 needs_attention 时核对受阻原因和所需权限，向用户说明需要处理的事项，保留原执行归属。' +
             '执行器的回报应作为待核查资料。其他状态结束本条通知。' }] });
         this.state.prepare(`UPDATE owners SET last_delivery=?,notification_until=0,next_retry=0,error=NULL
-          WHERE task_id=?`).run(delivery.updated_at, delivery.id);
+          WHERE task_id=? AND notification_until=?`).run(delivery.updated_at, delivery.id, notificationUntil);
       } catch (error) {
-        this.state.prepare('UPDATE owners SET notification_until=0,next_retry=?,error=? WHERE task_id=?')
-          .run(now + 60, String(error.stack || error).slice(0, 3000), delivery.id);
-        this.ctx.logger.warn(`CodeArts delivery ${delivery.id} could not reach its original DSH session. ${error.message || error}`);
+        const retry = this.state.prepare(`UPDATE owners SET notification_until=0,next_retry=?,error=?
+          WHERE task_id=? AND notification_until=?`)
+          .run(Date.now() / 1000 + 60, String(error.stack || error).slice(0, 3000), delivery.id, notificationUntil);
+        if (retry.changes) {
+          this.ctx.logger.warn(`CodeArts delivery ${delivery.id} could not reach its original DSH session. ${error.message || error}`);
+        }
       }
     }
   }

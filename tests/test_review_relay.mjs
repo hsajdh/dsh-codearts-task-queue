@@ -91,6 +91,86 @@ test('two relay instances do not notify the same delivery concurrently', async (
   await close(f, [f.relay, second]);
 });
 
+test('a restored worker with an expired lease defers to the new owner', async (t) => {
+  const f = fixture();
+  const agent = f.ctx.agents.get();
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  let releaseFirst;
+  const firstRestore = new Promise(resolve => { releaseFirst = resolve; });
+  let restorations = 0;
+  f.ctx.agents.get = () => undefined;
+  f.ctx.sessionController.agents.resolveAgent = async () => {
+    restorations++;
+    return restorations === 1 ? firstRestore : { agent };
+  };
+  f.queue.prepare('UPDATE tasks SET state=?,updated_at=?').run('awaiting_review', 2);
+  const firstTick = f.relay.tick();
+  now += 61000;
+  const second = new ReviewRelay(f.ctx, f.config);
+  await second.tick();
+  releaseFirst({ agent });
+  await firstTick;
+  const delivered = f.messages.length;
+  await close(f, [f.relay, second]);
+  assert.equal(delivered, 1);
+});
+
+test('an old restoration failure cannot erase the replacement worker lease', async (t) => {
+  const f = fixture();
+  const agent = f.ctx.agents.get();
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  let releaseFirst;
+  let releaseSecond;
+  const firstRestore = new Promise(resolve => { releaseFirst = resolve; });
+  const secondRestore = new Promise(resolve => { releaseSecond = resolve; });
+  let restorations = 0;
+  f.ctx.agents.get = () => undefined;
+  f.ctx.sessionController.agents.resolveAgent = async () => {
+    restorations++;
+    return restorations === 1 ? firstRestore : secondRestore;
+  };
+  f.queue.prepare('UPDATE tasks SET state=?,updated_at=?').run('awaiting_review', 2);
+  const firstTick = f.relay.tick();
+  now += 61000;
+  const second = new ReviewRelay(f.ctx, f.config);
+  const secondTick = second.tick();
+  const replacement = second.state.prepare('SELECT notification_until FROM owners').get().notification_until;
+  releaseFirst({ error: new Error('Original restoration failed after timeout') });
+  await firstTick;
+  const afterFailure = second.state.prepare('SELECT notification_until,error FROM owners').get();
+  releaseSecond({ agent });
+  await secondTick;
+  await close(f, [f.relay, second]);
+  assert.equal(afterFailure.notification_until, replacement);
+  assert.equal(afterFailure.error, null);
+});
+
+test('a slow restoration failure starts backoff at the actual failure time', async (t) => {
+  const f = fixture();
+  let now = Date.now();
+  t.mock.method(Date, 'now', () => now);
+  let release;
+  const restoration = new Promise(resolve => { release = resolve; });
+  let attempts = 0;
+  f.ctx.agents.get = () => undefined;
+  f.ctx.sessionController.agents.resolveAgent = async () => {
+    attempts++;
+    return restoration;
+  };
+  f.queue.prepare('UPDATE tasks SET state=?,updated_at=?').run('awaiting_review', 2);
+  const tick = f.relay.tick();
+  now += 61000;
+  release({ error: new Error('Slow restoration failed') });
+  await tick;
+  const nextRetry = f.relay.state.prepare('SELECT next_retry FROM owners').get().next_retry;
+  await f.relay.tick();
+  await close(f);
+  assert.equal(nextRetry, now / 1000 + 60);
+  assert.equal(attempts, 1);
+});
+
 test('restart resumes only the original parent and remembers delivery revision', async () => {
   const f = fixture();
   await f.relay.close();
