@@ -60,7 +60,7 @@ export class ReviewRelay {
     let deliveries;
     try {
       queue.exec('PRAGMA busy_timeout=5000');
-      deliveries = queue.prepare("SELECT id,updated_at FROM tasks WHERE state='awaiting_review'").all();
+      deliveries = queue.prepare("SELECT id,updated_at FROM tasks WHERE state IN ('awaiting_review','needs_attention')").all();
     } finally {
       queue.close();
     }
@@ -90,7 +90,7 @@ export class ReviewRelay {
         } finally {
           currentQueue.close();
         }
-        if (current?.state !== 'awaiting_review' || current.updated_at !== delivery.updated_at) {
+        if (!['awaiting_review', 'needs_attention'].includes(current?.state) || current.updated_at !== delivery.updated_at) {
           this.state.prepare('UPDATE owners SET notification_until=0 WHERE task_id=?').run(delivery.id);
           continue;
         }
@@ -98,10 +98,11 @@ export class ReviewRelay {
         await agent.followup({ role: 'user', id: `codearts-delivery-${delivery.id}-${revision}`,
           source: { kind: 'codearts-task-delivery', taskId: delivery.id },
           content: [{ type: 'text', text:
-            `CodeArts 桌面已回报任务 ${delivery.id} 的交付。` +
+            `CodeArts 桌面已更新任务 ${delivery.id} 的回报。` +
             '请先使用 codearts_queue 的 queue_status 核对状态。沿用用户原先授权的项目范围、权限和验收标准，' +
-            '独立读取实际交付文件并运行必要测试，再调用 review_delivery 记录证据。' +
-            '执行器的回报应作为待核查资料。如果该任务已验收或取消，结束本条通知。' }] });
+            '状态为 awaiting_review 时独立读取实际交付文件并运行必要测试，再调用 review_delivery 记录证据。' +
+            '状态为 needs_attention 时核对受阻原因和所需权限，向用户说明需要处理的事项，保留原执行归属。' +
+            '执行器的回报应作为待核查资料。其他状态结束本条通知。' }] });
         this.state.prepare(`UPDATE owners SET last_delivery=?,notification_until=0,next_retry=0,error=NULL
           WHERE task_id=?`).run(delivery.updated_at, delivery.id);
       } catch (error) {

@@ -108,6 +108,10 @@ python -m venv .venv
 
 在运行任务结束或正常停止后，备份运行数据，更新源码并重新安装固定依赖，再运行配置和检查命令。
 
+alpha.5 的配置读写使用 YAML 1.2 安全解析，依赖中新增固定版本的 ruamel.yaml。旧版本已经改写的 off/on/yes/no 等值需要结合安装备份恢复原义。新的 --doctor 会校验本项目完整规则段，过期规则会显示检查未通过。
+
+生成的通知模块入口采用带版本的 file URL。重新应用配置后，支持 profile 热重载的 DSH 宿主可加载新通知模块。Python MCP 服务也应通过客户端原生重连或独立组件重载加载新代码，最后检查连接状态。
+
 ```powershell
 git pull --ff-only
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt

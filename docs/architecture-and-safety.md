@@ -10,7 +10,7 @@ DSH 和 CodeArts 桌面各自启动一个 Python stdio MCP 进程，两个进程
 
 ## 交付通知
 
-DSH 插件观察成功的提交工具事件，记录任务 ID、原 DSH 会话、profile 和通知版本。约两秒一次的本机查询查找 `awaiting_review`。
+DSH 插件观察成功的提交工具事件，记录任务 ID、原 DSH 会话、profile 和通知版本。约两秒一次的本机查询查找 `awaiting_review` 和 `needs_attention`。父端核对当前状态后，分别处理独立验收或受阻事项。
 
 已经加载的会话通过 `agent.followup` 接收下一轮消息。持久会话通过 DSH 自带的会话组合服务恢复，再接收通知。该恢复使用 `sessionController.agents.resolveAgent`，与当前 DSH 预览版本的宿主接口有关。升级宿主后应重新验证恢复路径。
 

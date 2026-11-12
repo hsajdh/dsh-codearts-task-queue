@@ -80,6 +80,12 @@ class ProtocolTests(unittest.TestCase):
                     claim = await call(execute, 'claim_next', {'claim_key': 'one-manual-pickup'})
                     owner = {'task_id': task['id'], 'lease_token': claim['task']['lease_token']}
                     self.assertEqual(claim['task']['id'], task['id'])
+                    blocked = await call(execute, 'report_delivery', {**owner,
+                        'summary': 'Native permission required', 'artifacts': [], 'tests': [], 'blocked': True})
+                    self.assertEqual(blocked['state'], 'needs_attention')
+                    waiting = await call(execute, 'claim_next', {'claim_key': 'scheduled-while-blocked'})
+                    self.assertTrue(waiting['busy'])
+                    self.assertTrue(waiting['needs_attention'])
                     await call(execute, 'report_progress', {**owner, 'summary': 'Simulating file delivery'})
                     artifact = project / 'result.txt'
                     artifact.write_text('PROTOCOL_FIXTURE_OK\n', encoding='utf-8')

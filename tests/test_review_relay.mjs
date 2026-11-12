@@ -53,6 +53,35 @@ test('delivery wakes the original session once and does not auto-accept', async 
   await close(f);
 });
 
+test('blocked work notifies the parent once and keeps executor ownership', async () => {
+  const f = fixture();
+  f.queue.prepare('UPDATE tasks SET state=?,updated_at=?').run('needs_attention', 2);
+  await f.relay.tick();
+  await f.relay.tick();
+  assert.equal(f.messages.length, 1);
+  assert.match(f.messages[0].content[0].text, /needs_attention/);
+  assert.match(f.messages[0].content[0].text, /awaiting_review/);
+  assert.equal(f.queue.prepare('SELECT state FROM tasks').get().state, 'needs_attention');
+  f.queue.prepare('UPDATE tasks SET state=?,updated_at=?').run('awaiting_review', 3);
+  await f.relay.tick();
+  assert.equal(f.messages.length, 2);
+  await close(f);
+});
+
+test('blocked work canceled during parent restoration does not notify', async () => {
+  const f = fixture();
+  const originalAgent = f.ctx.agents.get();
+  f.ctx.agents.get = () => undefined;
+  f.ctx.sessionController.agents.resolveAgent = async () => {
+    f.queue.prepare('UPDATE tasks SET state=?').run('canceled');
+    return { agent: originalAgent };
+  };
+  f.queue.prepare('UPDATE tasks SET state=?,updated_at=?').run('needs_attention', 2);
+  await f.relay.tick();
+  assert.equal(f.messages.length, 0);
+  await close(f);
+});
+
 test('two relay instances do not notify the same delivery concurrently', async () => {
   const f = fixture();
   const second = new ReviewRelay(f.ctx, f.config);

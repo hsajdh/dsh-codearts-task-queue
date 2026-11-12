@@ -162,7 +162,8 @@ def claim_next(claim_key: str, lease_seconds: int = 3600, project_dir: str = '')
         if active:
             return {'task': None, 'busy': True, 'active_task_id': active['id'],
                     'active_project': active['project'],
-                    'needs_attention': bool(active['lease_until'] and active['lease_until'] < time.time())}
+                    'needs_attention': active['state'] == 'needs_attention' or
+                                       bool(active['lease_until'] and active['lease_until'] < time.time())}
         row = None
         for candidate in connection.execute("SELECT * FROM tasks WHERE state='queued' ORDER BY created_at"):
             if within_project(candidate['project'], scope):

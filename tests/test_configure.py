@@ -50,6 +50,10 @@ class ConfigurationTests(unittest.TestCase):
             entries = yaml.safe_load(target.read_text(encoding='utf-8'))
             self.assertEqual(entries[0]['insert'][0]['id'], 'unrelated')
             self.assertEqual(entries[0]['insert'][0]['config'], {'value': 'preserved'})
+            relay = next(child for entry in entries for child in entry.get('insert', [])
+                         if child.get('id') == 'codearts-review-notifications')
+            self.assertEqual(relay['name'], (ROOT / 'relay/index.js').as_uri() +
+                             '?version=' + configure.PACKAGE_VERSION)
         settings = json.loads((self.args.codearts_home / 'mcp/mcp_settings.json').read_text(encoding='utf-8'))
         self.assertTrue(settings['mcp']['other-connector']['enabled'])
         self.assertTrue((self.args.dsh_home / 'AGENTS.md').read_text(encoding='utf-8').startswith('Existing project instructions.'))
@@ -125,6 +129,29 @@ class ConfigurationTests(unittest.TestCase):
         settings.write_text('{"other-setting": true}\n', encoding='utf-8')
         self.args.uninstall = True
         self.assertEqual(configure.make_plan(self.args), [])
+
+    def test_install_and_uninstall_preserve_yaml_12_scalar_meanings(self):
+        target = self.patches[0]
+        target.write_text('- id: existing-values\n  config:\n    mode: off\n'
+                          '    labels: [on, off, yes, no]\n    enabled: true\n'
+                          '    leadingZero: 012\n    scientific: 1e3\n'
+                          '    reasoningEfforts: {off: null, high: high}\n', encoding='utf-8')
+        expected = {'mode': 'off', 'labels': ['on', 'off', 'yes', 'no'], 'enabled': True,
+                    'leadingZero': 12, 'scientific': 1000.0,
+                    'reasoningEfforts': {'off': None, 'high': 'high'}}
+        self.assertEqual(configure.load_patch(target)[0]['config'], expected)
+        configure.apply_plan(configure.make_plan(self.args), self.args.data_dir)
+        self.assertEqual(configure.load_patch(target)[0]['config'], expected)
+        self.args.uninstall = True
+        configure.apply_plan(configure.make_plan(self.args), self.args.data_dir)
+        self.assertEqual(configure.load_patch(target)[0]['config'], expected)
+
+    def test_doctor_detects_outdated_marked_instructions(self):
+        configure.apply_plan(configure.make_plan(self.args), self.args.data_dir)
+        target = self.args.dsh_home / 'AGENTS.md'
+        text = target.read_text(encoding='utf-8')
+        target.write_text(text.replace('用户授权将当前项目任务', 'Legacy queue instructions'), encoding='utf-8')
+        self.assertFalse(configure.doctor(self.args)['checks']['dsh_instructions'])
 
 
 if __name__ == '__main__':

@@ -4,7 +4,9 @@
 
 把 DeepSeek Harness 的具体开发任务交给本机 CodeArts 桌面端。通过桌面消息或用户配置的官方原生定时任务领取，CodeArts 完成交付后，由发起任务的 DSH 会话独立检查文件、运行必要测试并记录验收结果。
 
-**当前版本为 `v0.1.0-alpha.4` 社区实验版。** Windows 本机真实桌面闭环已通过，覆盖派发、手动领取、官方定时领取、文件交付、自动通知、DSH 独立验收、退回修订、取消及空队列。适用版本和实测范围见验证记录。[真实桌面验收](docs/desktop-verification-20261111.md) [原生定时领取与验收](docs/automation.md)
+**当前版本为 `v0.1.0-alpha.5` 社区实验版。** Windows 本机真实桌面闭环已通过，覆盖派发、手动领取、官方定时领取、文件交付、自动通知、DSH 独立验收、退回修订、取消及空队列。受阻通知及冷会话恢复另经原生宿主隔离验证。适用版本和实测范围见验证记录。[真实桌面验收](docs/desktop-verification-20261111.md) [原生定时领取与验收](docs/automation.md)
+
+升级到 alpha.5 时先安装固定依赖，再运行配置脚本。该版本修复了旧安装器把 YAML 中 off 等字符串转换为布尔值的问题。已有配置应对照安装备份核对相应字段。[升级与恢复](docs/installation.md#升级) [相关排查](docs/troubleshooting.md#安装后其他插件出现-off-或-false-校验错误)
 
 ```mermaid
 flowchart LR

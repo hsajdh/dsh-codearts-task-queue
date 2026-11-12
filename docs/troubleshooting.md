@@ -45,6 +45,14 @@
 
 在 CodeArts 桌面打开与任务 `project` 对应的项目，核对客户端的文件访问与终端权限。按照原生提示处理授权。受阻时由执行器通过 `report_delivery` 设置 `blocked: true` 并写明需要处理的事项，用户处理后在原任务上下文继续。
 
+alpha.5 起，受阻状态会通知原 DSH 会话，后续领取的 busy 响应也会标明 needs_attention。查询并处理活动任务后继续原执行上下文。归属过期后的重新派发仍需要确认原执行已停止。
+
+## 安装后其他插件出现 off 或 false 校验错误
+
+alpha.4 及更早版本的安装器使用 YAML 1.1 的默认解析，可能把 DSH YAML 1.2 配置中的 off/on/yes/no 转成布尔值。alpha.5 使用纯 Python YAML 1.2 安全解析，并有安装、卸载和数值语义回归。
+
+升级时先安装新 requirements，再运行 configure.py。已有被改写的字段需要对照此前安装备份逐项恢复，例如 reasoningEfforts 的 off 键、sessionModes 的 off 值。结合原备份和插件校验信息恢复对应字段。默认升级保留配置当前值，恢复结果须单独核对。
+
 ## 交付路径被拒绝
 
 `artifacts` 中的路径需要真实存在并位于任务项目目录内。相对路径从任务项目根目录解析。符号链接和目录跳转会按实际解析后的路径核对。

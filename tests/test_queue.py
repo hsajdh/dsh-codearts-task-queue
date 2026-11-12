@@ -90,6 +90,18 @@ class QueueTests(unittest.TestCase):
         self.assertTrue(result['busy'])
         self.assertTrue(result['needs_attention'])
 
+    def test_blocked_delivery_is_reported_as_needing_attention_before_expiry(self):
+        task = self.submit()
+        claimed = queue.claim_next('blocked-owner')
+        queue.report_delivery(task['id'], claimed['task']['lease_token'], 'Native permission required',
+                              [], [], blocked=True)
+        result = queue.claim_next('next-scheduled-run', project_dir=str(self.project))
+        self.assertTrue(result['busy'])
+        self.assertTrue(result['needs_attention'])
+        self.assertEqual(result['active_task_id'], task['id'])
+        self.assertEqual(queue.claim_next('blocked-owner')['task']['lease_token'],
+                         claimed['task']['lease_token'])
+
     def test_cancellation_takes_precedence_over_late_delivery(self):
         task = self.submit()
         claimed = queue.claim_next('claim-1')

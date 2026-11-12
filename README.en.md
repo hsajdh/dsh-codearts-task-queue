@@ -4,7 +4,9 @@
 
 Delegate a bounded task from DeepSeek Harness to the CodeArts desktop app on the same computer. Receive it through a desktop message or a user-configured native CodeArts schedule. After delivery, the originating DSH session receives a notification and independently checks the actual files and tests.
 
-**`v0.1.0-alpha.4` is a community experimental release.** Live Windows desktop checks passed for submission, manual and native scheduled pickup, actual file delivery, automatic notification, independent DSH model review, rejection and revision, cancellation, and empty-queue handling. See the recorded versions and scope. [Live desktop verification](docs/desktop-verification-20261111.md) [Native scheduled pickup](docs/automation.md)
+**`v0.1.0-alpha.5` is a community experimental release.** Live Windows desktop checks passed for submission, manual and native scheduled pickup, actual file delivery, automatic notification, independent DSH model review, rejection and revision, cancellation, and empty-queue handling. Blocked-work notifications and cold-session restoration were also verified in an isolated native DSH host. [Live desktop verification](docs/desktop-verification-20261111.md) [Native scheduled pickup](docs/automation.md)
+
+Install the pinned requirements before rerunning the installer after an upgrade. This release preserves YAML 1.2 scalar meanings such as `off`, `on`, leading-zero decimal values and scientific notation. Compare affected older configuration with installation backups when recovering previously rewritten values. [Upgrade and recovery](docs/installation.md#升级)
 
 ## How it works
 

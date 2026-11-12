@@ -3,6 +3,7 @@ import argparse
 import ctypes
 from datetime import datetime, timezone
 import hashlib
+from io import StringIO
 import json
 import os
 from pathlib import Path
@@ -12,9 +13,11 @@ import subprocess
 import sys
 import uuid
 
-import yaml
+from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 ROOT = Path(__file__).resolve().parent.parent
+PACKAGE_VERSION = json.loads((ROOT / 'package.json').read_text(encoding='utf-8'))['version']
 ENTRY_IDS = {'codearts-desktop-queue', 'codearts-review-notifications'}
 START = '<!-- BEGIN dsh-codearts-task-queue -->'
 END = '<!-- END dsh-codearts-task-queue -->'
@@ -26,7 +29,7 @@ INSTRUCTIONS = f'''{START}
 
 任务状态通过队列 MCP 工具更新。同一 request_key 的标题、指令和验收条件对应原任务定义；修正这些内容或取消后重新派发时，提交新的 request_key。退回修订继续使用原任务 ID，由下一轮领取取得新的 claim_key。
 
-交付通知回到发起派发的 DSH 原会话。收到通知先调用 queue_status 核对状态，把执行器回报作为待核查资料，沿用用户原先授权的范围与验收标准，独立读取文件、运行必要测试，再使用 review_delivery 记录具体证据。退回的任务等待下一轮授权领取。DSH 检查轮次使用正常模型额度，空闲监测查询本机数据库。运行中的任务取消时先请求取消，用户在桌面实际停止后再确认 executor_stopped。
+交付或受阻通知回到发起派发的 DSH 原会话。收到通知先调用 queue_status 核对状态，把执行器回报作为待核查资料。awaiting_review 时沿用用户原先授权的范围与验收标准，独立读取文件、运行必要测试，再使用 review_delivery 记录具体证据。needs_attention 时核对受阻原因和权限需求，向用户说明待处理事项，保留原执行归属。退回的任务等待下一轮授权领取。DSH 检查轮次使用正常模型额度，空闲监测查询本机数据库。运行中的任务取消时先请求取消，用户在桌面实际停止后再确认 executor_stopped。
 
 {END}
 '''
@@ -38,12 +41,22 @@ def read_bytes(path):
 
 def load_patch(path):
     payload = read_bytes(path)
-    entries = yaml.safe_load(payload.decode('utf-8-sig')) if payload else []
+    entries = YAML(typ='safe', pure=True).load(payload.decode('utf-8-sig')) if payload else []
     if entries is None:
         return []
     if not isinstance(entries, list):
         raise ValueError('Expected a YAML patch list at ' + str(path))
     return entries
+
+
+def dump_patch(entries):
+    serializer = YAML(typ='safe', pure=True)
+    serializer.default_flow_style = False
+    serializer.allow_unicode = True
+    serializer.sort_base_mapping_type_on_output = False
+    stream = StringIO()
+    serializer.dump(entries, stream)
+    return stream.getvalue().encode('utf-8')
 
 
 def without_our_entries(entries):
@@ -71,7 +84,8 @@ def entries_for(profile, database, data_dir):
             'serverName': 'codearts_queue', 'transport': 'stdio', 'command': command,
             'args': [script, '--role', 'dispatcher', '--database', str(database)],
             'env': {'PYTHONUTF8': '1'}, 'toolCallTimeoutMs': 60000}},
-        {'id': 'codearts-review-notifications', 'name': (ROOT / 'relay/index.js').as_posix(), 'config': {
+        {'id': 'codearts-review-notifications',
+         'name': (ROOT / 'relay/index.js').as_uri() + '?version=' + PACKAGE_VERSION, 'config': {
             'profileName': profile, 'databasePath': str(database),
             'statePath': str(data_dir / 'review.sqlite')}},
     ]
@@ -89,7 +103,7 @@ def other_profiles_use_queue(args):
             continue
         try:
             entries = load_patch(path)
-        except (OSError, ValueError, yaml.YAMLError):
+        except (OSError, ValueError, YAMLError):
             return True
         for entry in entries:
             if not isinstance(entry, dict):
@@ -113,7 +127,7 @@ def make_plan(args):
             continue
         if not args.uninstall:
             entries.append({'insert': entries_for(profile, args.database, args.data_dir)})
-        payload = yaml.safe_dump(entries, allow_unicode=True, sort_keys=False).encode('utf-8')
+        payload = dump_patch(entries)
         plan.append((target, read_bytes(target), payload))
     if args.uninstall and other_profiles_use_queue(args):
         return [(path, before, after) for path, before, after in plan if before != after]
@@ -228,7 +242,9 @@ def doctor(args):
     settings_path = args.codearts_home / 'mcp/mcp_settings.json'
     settings = json.loads(settings_path.read_text(encoding='utf-8-sig')) if settings_path.exists() else {}
     checks['codearts_connector'] = settings.get('mcp', {}).get('dsh-task-queue') == connector_for(args.database)
-    checks['dsh_instructions'] = START in (args.dsh_home / 'AGENTS.md').read_text(encoding='utf-8-sig') if (args.dsh_home / 'AGENTS.md').exists() else False
+    instructions_path = args.dsh_home / 'AGENTS.md'
+    instructions = instructions_path.read_text(encoding='utf-8-sig') if instructions_path.exists() else ''
+    checks['dsh_instructions'] = INSTRUCTIONS.strip() in instructions
     if args.database.exists():
         with sqlite3.connect(args.database.as_uri() + '?mode=ro', uri=True) as connection:
             checks['queue_integrity'] = connection.execute('PRAGMA quick_check').fetchone()[0] == 'ok'
@@ -263,8 +279,7 @@ def main():
         args.output_dir.mkdir(parents=True, exist_ok=True)
         for profile in args.profiles:
             content = [{'insert': entries_for(profile, args.database, args.data_dir)}]
-            (args.output_dir / (profile + '.patch.yml')).write_text(
-                yaml.safe_dump(content, allow_unicode=True, sort_keys=False), encoding='utf-8')
+            (args.output_dir / (profile + '.patch.yml')).write_bytes(dump_patch(content))
         (args.output_dir / 'codearts.connector.json').write_text(json.dumps(
             {'dsh-task-queue': connector_for(args.database)}, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         (args.output_dir / 'dsh-instructions.md').write_text(INSTRUCTIONS, encoding='utf-8')
